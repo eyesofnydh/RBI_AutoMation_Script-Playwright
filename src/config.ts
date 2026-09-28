@@ -32,6 +32,18 @@ export const config = {
 
   searchTerm: process.env.SEARCH_TERM || 'repo rate',
 
+  /**
+   * Maximised browser window instead of the fixed 1440×900 desktop viewport.
+   * Defaults to on for headed runs (`--headed`), off for headless. MAXIMIZE=true/false forces it.
+   */
+  maximize: bool(process.env.MAXIMIZE, process.argv.includes('--headed') || !!process.env.PW_HEADED),
+  /** Window size used when maximising a headless browser (it has no screen to fill). */
+  windowSize: (process.env.WINDOW_SIZE || '1920,1080').split(',').map(Number) as [number, number],
+
+  /** Extent report (src/reporters/extent-reporter.ts) */
+  reportTitle: process.env.REPORT_TITLE || 'RBI Website — Automation Report',
+  reportDir: process.env.REPORT_DIR || 'extent-report',
+
   /** Auto-click tester: pages to exercise (0 = every crawled page) and max elements clicked per page. */
   interactionPageLimit: num(process.env.INTERACTION_PAGE_LIMIT, 0),
   maxClicksPerPage: num(process.env.MAX_CLICKS_PER_PAGE, 80),

@@ -1,5 +1,8 @@
 import { test as base, expect, Page } from '@playwright/test';
 import { config, consoleAllowlist } from './config';
+import { SoftAssert } from './utils/softAssert';
+import { log } from './utils/reportLogger';
+import { SiteFooter } from './pages/SiteFooter';
 
 export type PageIssues = {
   consoleErrors: string[];
@@ -10,8 +13,24 @@ export type PageIssues = {
 /**
  * `issues` collects console errors, uncaught JS exceptions and failed same-origin
  * requests for the lifetime of the test's page.
+ *
+ * `soft` is a SoftAssert whose assertAll() runs automatically when the test ends, so every
+ * soft failure is reported together and fails the test (call soft.assertAll() yourself to
+ * fail earlier).
+ *
+ * `footer` is the SiteFooter page object.
  */
-export const test = base.extend<{ issues: PageIssues }>({
+export const test = base.extend<{ issues: PageIssues; soft: SoftAssert; footer: SiteFooter }>({
+  soft: async ({ page }, use) => {
+    const soft = new SoftAssert(page);
+    await use(soft);
+    soft.assertAll();
+  },
+
+  footer: async ({ page }, use) => {
+    await use(new SiteFooter(page));
+  },
+
   issues: async ({ page }, use) => {
     const issues: PageIssues = { consoleErrors: [], pageErrors: [], failedRequests: [] };
     const origin = new URL(config.baseURL).origin;
@@ -48,6 +67,7 @@ export { expect };
 /** Go to a path and wait until the page is reasonably settled. */
 export async function gotoAndSettle(page: Page, path: string) {
   const res = await page.goto(path, { waitUntil: 'domcontentloaded' });
+  log.info(`Opened ${new URL(page.url()).pathname} (HTTP ${res?.status() ?? '-'}) on ${config.baseURL}`);
   await page.waitForLoadState('load').catch(() => {});
   await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => {});
   return res;

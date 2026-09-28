@@ -15,6 +15,22 @@ import type { Page, Locator } from '@playwright/test';
 
 const hasClass = (c: string) => `contains(concat(' ', normalize-space(@class), ' '), ' ${c} ')`;
 const text = (t: string) => `normalize-space()='${t}'`;
+/** XPath 1.0 has no lower-case(): translate() A-Z to a-z instead. */
+const lower = (expr: string) => `translate(${expr}, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz')`;
+/** Case-insensitive exact text match. */
+const ciText = (t: string) => `${lower('normalize-space()')}='${t.toLowerCase()}'`;
+
+export type SocialNetwork = 'youtube' | 'x' | 'instagram' | 'facebook' | 'linkedin';
+const socialHosts: Record<SocialNetwork, string[]> = {
+  youtube: ['youtube.com', 'youtu.be'],
+  x: ['twitter.com', '//x.com', 'www.x.com'],
+  instagram: ['instagram.com'],
+  facebook: ['facebook.com', 'fb.com'],
+  linkedin: ['linkedin.com'],
+};
+const socialHostsAll = () => Object.values(socialHosts).flat();
+/** Relative: deepest element (not a link) whose text is exactly `title`, case-insensitive. */
+const headingRel = (title: string) => `.//*[${ciText(title)}][not(.//*[${ciText(title)}])][not(self::a)]`;
 
 export const X = {
   header: {
@@ -196,6 +212,47 @@ export const X = {
     root: `(//footer[not(ancestor::main)])[last()]`,
     links: `(//footer[not(ancestor::main)])[last()]//a[@href]`,
     externalLinks: `(//footer[not(ancestor::main)])[last()]//a[starts-with(@href, 'http')]`,
+
+    // ---- Relative XPaths: start with "." and are resolved inside the footer root ----
+    // Use through SiteFooter, or xp(xp(page, X.footer.root), X.footer.rel.quickLinksHeading).
+    rel: {
+      /** Deepest element whose text is exactly the heading (e.g. "Quick Links"), whatever tag it uses. */
+      heading: headingRel,
+      /** Nearest ancestor of the heading that also holds links = that heading's column/section. */
+      section: (title: string) =>
+        `(${headingRel(title)})[1]/ancestor::*[.//a[@href]][1]`,
+      /** Links of one section (column) of the footer. */
+      sectionLinks: (title: string) =>
+        `(${headingRel(title)})[1]/ancestor::*[.//a[@href]][1]//a[@href]`,
+      /** Every footer link after the heading in document order (following axis). */
+      linksAfterHeading: (title: string) =>
+        `(${headingRel(title)})[1]/following::a[@href][ancestor::footer]`,
+      quickLinksHeading: headingRel('Quick Links'),
+      needHelpHeading: headingRel('Need Help'),
+      /** Social profile link, matched on the host so icon-only links work. */
+      social: (network: SocialNetwork) => `.//a[${socialHosts[network].map((h) => `contains(@href, '${h}')`).join(' or ')}]`,
+      socialLinks: `.//a[${socialHostsAll().map((h) => `contains(@href, '${h}')`).join(' or ')}]`,
+      /** A link by its visible text (exact, whitespace-normalised). */
+      linkByText: (label: string) => `.//a[@href and ${text(label)}]`,
+      /** Nearest heading before a given link (preceding axis is reverse, so [1] = closest). */
+      headingOfLink: (label: string) =>
+        `.//a[@href and ${text(label)}]/preceding::*[self::h2 or self::h3 or self::h4 or self::h5 or self::h6][1]`,
+      copyright: `.//*[contains(normalize-space(), '©') or contains(${lower('normalize-space()')}, 'copyright')][not(*[contains(normalize-space(), '©') or contains(${lower('normalize-space()')}, 'copyright')])]`,
+      lastUpdated: `.//*[contains(${lower('normalize-space()')}, 'last updated')][not(*[contains(${lower('normalize-space()')}, 'last updated')])]`,
+      logo: `(.//a[.//img or .//*[local-name()='svg']][not(starts-with(@href, 'http')) or contains(@href, 'rbi.org.in')])[1]`,
+      images: `.//img`,
+      /** Links with no accessible name: no text, no aria-label, no title and no img alt. */
+      unnamedLinks: `.//a[@href][not(normalize-space())][not(@aria-label) or @aria-label=''][not(@title)][not(.//img[@alt!=''])][not(.//*[local-name()='title'])]`,
+      /** "#", empty and javascript: links. */
+      deadLinks: `.//a[not(@href) or @href='' or @href='#' or starts-with(@href, 'javascript:')]`,
+      /** New-tab links that are missing rel=noopener/noreferrer (tab-nabbing). */
+      unsafeBlankLinks: `.//a[@target='_blank'][not(contains(@rel, 'noopener')) and not(contains(@rel, 'noreferrer'))]`,
+      /** Link list items: the Nth item of each list (position predicate). */
+      nthListItemLinks: (n: number) => `.//ul/li[${n}]/a[@href]`,
+      /** Last link of the footer (last() function). */
+      lastLink: `(.//a[@href])[last()]`,
+      backToTop: `.//*[(self::a or self::button) and (contains(${lower('normalize-space()')}, 'top') or contains(${lower('@aria-label')}, 'top'))]`,
+    },
   },
 
   generic: {

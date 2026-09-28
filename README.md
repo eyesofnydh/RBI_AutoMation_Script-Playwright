@@ -36,7 +36,10 @@ cp .env.example .env      # Windows: Copy-Item .env.example .env
 | `npm run test:mobile` | Functional suite on Pixel 7 emulation |
 | `npm run test:locators` | Checks every XPath in `src/locators/xpath.ts` still matches the live site |
 | `npm run test:headed` | Watch it run in a real browser |
+| `npm run test:footer` | Footer: Quick Links / Need Help links resolve, social profiles (new tab + rel=noopener), link names, copyright year, same footer on other pages, mobile stacking + tap targets |
+| `npm run test:maximized` | Functional suite in a visible, maximised browser window |
 | `npm run report` | Open the HTML report (screenshots, video and trace on failures) |
+| `npm run report:extent` | Open the Extent-style report (`extent-report/index.html`) |
 
 Target a different environment: `BASE_URL=https://www.rbi.org.in npm run test:functional`
 
@@ -59,6 +62,87 @@ await xpVisible(page, X.listing.pagerNext).click();   // first visible match
 ```
 
 After a deploy, run `npm run test:locators` first: it lists any XPath that no longer matches, so you fix one line instead of chasing many failures.
+
+### Relative XPaths (footer)
+
+The footer root uses an absolute XPath; everything inside it uses **relative XPaths** (starting with `.`) from
+`X.footer.rel`, resolved inside the root, so a "Forms" link in the page body is never mistaken for the footer one.
+They use XPath axes rather than CSS classes, so they survive markup changes:
+
+| Locator | Technique |
+|---|---|
+| `rel.heading('Quick Links')` | case-insensitive exact text via `translate()`, deepest match via `not(.//*[…])` |
+| `rel.section(title)` / `rel.sectionLinks(title)` | `ancestor::*[.//a[@href]][1]` — nearest ancestor that holds links = that column |
+| `rel.linksAfterHeading(title)` | `following::a` axis |
+| `rel.headingOfLink(label)` | `preceding::*[self::h2 or …][1]` — closest heading before a link |
+| `rel.social('youtube')` | `contains(@href, …)` on the host, so icon-only links match |
+| `rel.unnamedLinks`, `rel.deadLinks`, `rel.unsafeBlankLinks` | predicates that should match nothing (accessibility / security checks) |
+| `rel.nthListItemLinks(n)`, `rel.lastLink` | positional predicates, `last()` |
+
+```ts
+const footer = new SiteFooter(page);                     // or the `footer` fixture
+await footer.sectionLinks('Quick Links').count();
+await footer.rel(X.footer.rel.linksAfterHeading('Need Help')).first().click();
+await xp(xp(page, X.footer.root), X.footer.rel.copyright).innerText();
+```
+
+> The footer locators were written from the test cases (Quick Links, Need Help, social icons, copyright) — run
+> `npm run test:locators` against staging once and adjust any that report no match.
+
+## Soft assertions & utilities (`src/utils`)
+
+**`SoftAssert`** works like TestNG's: every check runs, failures are collected, `assertAll()` throws one error listing all of them.
+Each check is logged (pass/fail) to the Extent report and the first failure attaches a screenshot.
+
+```ts
+import { test } from '../../src/fixtures';
+
+test('footer', async ({ footer, soft }) => {          // `soft` calls assertAll() when the test ends
+  await soft.visible(footer.quickLinksHeading, 'Quick Links heading');
+  await soft.countAtLeast(footer.socialLinks, 1, 'social links present');
+  await soft.equals(await footer.copyrightYears(), [2026], 'copyright year');
+});
+
+// or by hand
+const soft = new SoftAssert(page);
+await soft.attribute(link, 'target', '_blank', 'opens in new tab');
+soft.assertAll();
+```
+
+Checks: `equals`, `notEquals`, `isTrue`, `isFalse`, `contains`, `matches`, `greaterThan`, `lessThan`, `isEmpty`,
+`visible`, `hidden`, `count`, `countAtLeast`, `text`, `containsText`, `attribute`, `url`, and `check(msg, fn)` for anything else.
+`softly(page, 'title', async soft => …)` wraps a block in a step and asserts at the end of it.
+
+| Module | Helpers |
+|---|---|
+| `reportLogger.ts` | `log.info / pass / warning / fail / skip`, `log.screenshot(page)`, `log.data(name, obj)` — Extent log entries |
+| `linkUtils.ts` | `collectLinks(locator)` (text, href, target, rel, size in one call), `uniqueHrefs`, `checkLinks(request, hrefs)` (HEAD→GET fallback, limited concurrency), `linkName` |
+| `urlUtils.ts` | `baseURL`, `urlFor(path)`, `isInternal`, `pathOf`, `hostOf`, `isDeadHref` |
+| `elementUtils.ts` | `scrollTo`, `scrollToBottom`, `cleanText`, `allTexts`, `isInViewport`, `boxes`, `overflowsViewport`, `highlight`, `clickAndGetPopup` |
+
+## Base URL and maximised browser
+
+- **Base URL** comes from `BASE_URL` in `.env` (default `https://stg-rbi.webc.in`); tests use relative paths (`page.goto('/faqs')`).
+  In code: `import { baseURL, urlFor } from '../../src/utils'`.
+- **Maximised window**: `--headed` runs open maximised automatically (`viewport: null` + `--start-maximized`).
+  Force it with `MAXIMIZE=true` (headless uses `WINDOW_SIZE`, default `1920,1080`) or turn it off with `MAXIMIZE=false`
+  to get the fixed 1440×900 viewport. Mobile runs always use Pixel 7 emulation.
+
+## Extent report
+
+Every run also writes **`extent-report/index.html`**, a report laid out like AventStack ExtentReports (Spark).
+ExtentReports itself is a Java/.NET library, so this is a Playwright reporter (`src/reporters/extent-reporter.ts`) that
+produces the same views:
+
+- **Dashboard**: pass/fail/skip/flaky counts, pass-rate and log-event charts, run times, system/environment info
+  (base URL, browser window, Playwright, Node, OS, workers), and per-category / device / spec summaries
+- **Tests**: searchable, filterable list; per test the step log (status, time, details) combining `test.step`, `expect`,
+  `log.*` and SoftAssert entries, errors with code snippet, screenshots (click to enlarge), video/trace links, retries
+- **Categories** (test tags such as `@footer`), **Devices** (projects), **Exceptions** (failures grouped by error)
+- Light/dark theme; the folder is self-contained (screenshots, videos and traces are copied into `extent-report/assets/`)
+
+Title and folder: `REPORT_TITLE`, `REPORT_DIR` in `.env`. In CI the sharded runs are merged into one Extent report
+(`merge.config.ts`) and uploaded as the `extent-report` artifact.
 
 ## Known issues found on staging (27 Sep 2026 live check — tests fail on purpose until fixed)
 
@@ -102,10 +186,13 @@ src/
   fixtures.ts        `issues` fixture (console/JS/network errors), navigation helpers
   locators/xpath.ts  every XPath locator, grouped by page
   pages/SiteHeader.ts  header page object (uses the XPaths)
+  pages/SiteFooter.ts  footer page object (relative XPaths inside the footer root)
+  utils/             SoftAssert, report logger, link / URL / element helpers
+  reporters/         Extent-style HTML reporter (extent-reporter.ts + extent/ css & js)
 tests/
   crawl/             pages / links / a11y (data-driven from the crawl)
   crawl/interactions.spec.ts  auto-click tester (every control on every page)
-  functional/        header, search, accessibility-language, homepage, listings, templates, responsive, xpath-locators
+  functional/        header, footer, search, accessibility-language, homepage, listings, templates, responsive, xpath-locators
 run.ps1 / run.bat    Windows runner with a menu
 .github/workflows/e2e.yml   nightly + on-demand CI, 4 shards, merged HTML report
 ```

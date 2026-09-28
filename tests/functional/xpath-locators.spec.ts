@@ -1,4 +1,5 @@
 import { test, expect, gotoAndSettle } from '../../src/fixtures';
+import type { Locator, Page } from '@playwright/test';
 import { X, xp } from '../../src/locators/xpath';
 
 /**
@@ -40,6 +41,13 @@ const sampleArgs: Record<string, unknown> = {
   functionCheckbox: 'About Us',
   pagerPage: 2,
   pin: 'Srinagar Office',
+  // footer.rel.*
+  heading: 'Quick Links',
+  section: 'Quick Links',
+  sectionLinks: 'Quick Links',
+  linksAfterHeading: 'Need Help',
+  social: 'youtube',
+  nthListItemLinks: 1,
 };
 
 /** Locators that legitimately match nothing until an interaction, or are checked elsewhere. */
@@ -55,6 +63,13 @@ const skip = new Set([
   'filters.visibleOptions', // only while a dropdown is open
   'staticPage.accordionToggles',
   'staticPage.sectionRailMore', // only on some static pages
+  'footer.rel.linkByText', // needs a real link label
+  'footer.rel.headingOfLink',
+  'footer.rel.unnamedLinks', // should be 0 — asserted in footer.spec
+  'footer.rel.deadLinks',
+  'footer.rel.unsafeBlankLinks',
+  'footer.rel.lastUpdated', // optional on the site
+  'footer.rel.backToTop',
 ]);
 
 test.describe('XPath locator health', { tag: ['@functional', '@locators'] }, () => {
@@ -71,16 +86,24 @@ test.describe('XPath locator health', { tag: ['@functional', '@locators'] }, () 
       }
 
       const missing: string[] = [];
-      for (const [name, value] of Object.entries(X[group])) {
-        const key = `${group}.${name}`;
-        if (skip.has(key)) continue;
-        let xpath: string;
-        if (typeof value === 'string') xpath = value;
-        else if (typeof value === 'function') xpath = (value as (a: unknown) => string)(sampleArgs[name]);
-        else continue;
-        const count = await xp(page, xpath).count();
-        if (count === 0) missing.push(`${key}  →  ${xpath}`);
-      }
+      // Nested groups (e.g. footer.rel) hold relative XPaths ("./…"), resolved inside the group's root.
+      const check = async (entries: Record<string, unknown>, prefix: string, scope: Page | Locator) => {
+        for (const [name, value] of Object.entries(entries)) {
+          const key = `${prefix}.${name}`;
+          if (skip.has(key)) continue;
+          let xpath: string;
+          if (typeof value === 'string') xpath = value;
+          else if (typeof value === 'function') xpath = (value as (a: unknown) => string)(sampleArgs[name]);
+          else if (value && typeof value === 'object' && !Array.isArray(value)) {
+            const root = (X[group] as Record<string, unknown>).root;
+            await check(value as Record<string, unknown>, key, typeof root === 'string' ? xp(page, root) : page);
+            continue;
+          } else continue;
+          const count = await xp(scope, xpath).count();
+          if (count === 0) missing.push(`${key}  →  ${xpath}`);
+        }
+      };
+      await check(X[group] as Record<string, unknown>, group, page);
       expect(missing, `XPath locators with no match on ${page.url()}`).toEqual([]);
     });
   }

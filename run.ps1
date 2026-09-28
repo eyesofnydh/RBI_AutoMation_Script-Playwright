@@ -13,7 +13,9 @@
     .\run.ps1 a11y         # accessibility scan (after crawl)
     .\run.ps1 clickall     # click every button/tab/dropdown on every page (after crawl)
     .\run.ps1 headed       # functional tests in a visible browser
+    .\run.ps1 footer       # footer tests (soft assertions)
     .\run.ps1 report       # open the last HTML report
+    .\run.ps1 extent       # open the last Extent report
 
   If Windows blocks the script, run once:
     Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
@@ -54,6 +56,11 @@ function Show-Report {
     else { Write-Host "No report yet - run some tests first." -ForegroundColor Yellow }
 }
 
+function Show-Extent {
+    if (Test-Path "extent-report\index.html") { Invoke-Item "extent-report\index.html" }
+    else { Write-Host "No Extent report yet - run some tests first." -ForegroundColor Yellow }
+}
+
 function Invoke-Task($t) {
     switch ($t) {
         "setup"      { Invoke-Setup; return }
@@ -70,7 +77,9 @@ function Invoke-Task($t) {
         "a11y"       { Ensure-Setup; Run "Accessibility scan" @("npx", "playwright", "test", "tests/crawl/a11y.spec.ts") }
         "clickall"   { Ensure-Setup; Run "Auto-click every button on every page" @("npx", "playwright", "test", "tests/crawl/interactions.spec.ts", "--project=desktop-chrome") }
         "headed"     { Ensure-Setup; Run "Functional tests in a visible browser" @("npx", "playwright", "test", "tests/functional", "--project=desktop-chrome", "--headed", "--workers=1") }
+        "footer"     { Ensure-Setup; Run "Footer tests" @("npx", "playwright", "test", "footer.spec.ts") }
         "report"     { Show-Report; return }
+        "extent"     { Show-Extent; return }
         default      { Write-Host "Unknown task '$t'" -ForegroundColor Red; return }
     }
     if ($script:lastExit -eq 0) { Write-Host "`nAll tests passed." -ForegroundColor Green }
@@ -91,6 +100,8 @@ $menu = [ordered]@{
     "8" = @("a11y",       "Accessibility scan (needs crawl)")
     "9" = @("headed",     "Watch functional tests run in a browser")
     "C" = @("clickall",   "Auto-click every button/tab/dropdown on every page (needs crawl)")
+    "F" = @("footer",     "Footer tests (links, social, copyright, mobile)")
+    "E" = @("extent",     "Open last Extent report")
     "0" = @("report",     "Open last report")
 }
 Write-Host "`nRBI website - E2E tests" -ForegroundColor Cyan

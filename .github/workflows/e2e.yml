@@ -64,6 +64,8 @@ jobs:
       - run: npm ci
       - uses: actions/download-artifact@v4
         with: { pattern: blob-*, path: all-blobs, merge-multiple: true }
-      - run: npx playwright merge-reports --reporter html ./all-blobs
+      - run: npx playwright merge-reports --config merge.config.ts ./all-blobs
       - uses: actions/upload-artifact@v4
         with: { name: html-report, path: playwright-report/ }
+      - uses: actions/upload-artifact@v4
+        with: { name: extent-report, path: extent-report/ }
