@@ -1,0 +1,31 @@
+{
+  "name": "rbi-e2e",
+  "version": "1.0.0",
+  "private": true,
+  "description": "End-to-end test suite for the RBI website (stg-rbi.webc.in)",
+  "scripts": {
+    "crawl": "tsx src/crawl-cli.ts",
+    "test": "playwright test",
+    "test:full": "npm run crawl && playwright test",
+    "test:functional": "playwright test tests/functional",
+    "test:pages": "playwright test tests/crawl/pages.spec.ts",
+    "test:links": "playwright test tests/crawl/links.spec.ts",
+    "test:a11y": "playwright test tests/crawl/a11y.spec.ts",
+    "test:desktop": "playwright test --project=desktop-chrome",
+    "test:mobile": "playwright test --project=mobile-chrome",
+    "test:headed": "playwright test --headed --workers=1",
+    "report": "playwright show-report",
+    "typecheck": "tsc --noEmit",
+    "setup": "npm install && npx playwright install chromium",
+    "test:locators": "playwright test xpath-locators --project=desktop-chrome",
+    "test:interactions": "playwright test tests/crawl/interactions.spec.ts --project=desktop-chrome"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "^4.13.0",
+    "@playwright/test": "^1.63.0",
+    "@types/node": "^22.0.0",
+    "dotenv": "^16.4.5",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0"
+  }
+}
