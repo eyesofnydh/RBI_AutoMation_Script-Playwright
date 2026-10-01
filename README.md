@@ -59,7 +59,9 @@ Allure report generation requires Java. CI installs Java automatically; for loca
 
 ## GitHub Actions
 
-Pushes and pull requests run the `@smoke` suite on two shards so feedback remains practical. The nightly schedule and a manual run with **coverage = full** execute all functional scenarios and a much larger page/link/accessibility/interaction audit on four shards. Chromium is cached between runs, and all shards are merged into one Playwright report and one Allure report even when tests fail.
+Pushes and pull requests run the 24-check `@smoke` suite. The nightly schedule and a manual run with **coverage = full** execute all functional scenarios and a much larger page/link/accessibility/interaction audit. Chromium is cached between runs.
+
+The workflow intentionally runs crawl, tests, Playwright HTML generation, and Allure generation in one job. This removes cross-job artifact downloads, blob reports, and `playwright merge-reports`. If tests fail, both reports are generated and uploaded first; the final step then gives the workflow the correct failed status.
 
 Site defects still make the test job red by design. Infrastructure errors (for example missing crawl data) fail earlier with an explicit artifact error, so they are not confused with product failures.
 
@@ -128,7 +130,7 @@ tests/
   crawl/interactions.spec.ts  auto-click tester (every control on every page)
   functional/        header, search, accessibility-language, homepage, listings, templates, responsive, xpath-locators
 run.ps1 / run.bat    Windows runner with a menu
-.github/workflows/e2e.yml   nightly + on-demand CI, 4 shards, merged HTML report
+.github/workflows/e2e.yml   smoke/full CI with direct Playwright + Allure reports
 ```
 
 ## Tuning

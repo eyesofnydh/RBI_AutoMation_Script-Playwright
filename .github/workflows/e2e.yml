@@ -21,6 +21,9 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+
 concurrency:
   group: rbi-e2e-${{ github.ref }}
   cancel-in-progress: true
@@ -29,8 +32,8 @@ env:
   BASE_URL: ${{ inputs.base_url || 'https://stg-rbi.webc.in' }}
   HTTP_USER: ${{ secrets.HTTP_USER }}
   HTTP_PASS: ${{ secrets.HTTP_PASS }}
-  # Pushes use a representative sample. Nightly/manual full runs exercise every
-  # scenario while keeping the expensive per-page audits bounded.
+  RUN_FULL: ${{ (github.event_name == 'schedule' || inputs.coverage == 'full') && 'true' || 'false' }}
+  TEST_GREP: ${{ (github.event_name == 'schedule' || inputs.coverage == 'full') && '.*' || '@smoke' }}
   MAX_PAGES: ${{ (github.event_name == 'schedule' || inputs.coverage == 'full') && '2000' || '150' }}
   MAX_PER_SECTION: ${{ (github.event_name == 'schedule' || inputs.coverage == 'full') && '100' || '15' }}
   PAGE_CHECK_LIMIT: ${{ (github.event_name == 'schedule' || inputs.coverage == 'full') && '0' || '75' }}
@@ -38,142 +41,85 @@ env:
   LINK_CHECK_LIMIT: ${{ (github.event_name == 'schedule' || inputs.coverage == 'full') && '0' || '1000' }}
   INTERACTION_PAGE_LIMIT: ${{ (github.event_name == 'schedule' || inputs.coverage == 'full') && '50' || '5' }}
   CHECK_EXTERNAL_LINKS: ${{ (github.event_name == 'schedule' || inputs.coverage == 'full') && 'true' || 'false' }}
-  SHARD_TOTAL: ${{ (github.event_name == 'schedule' || inputs.coverage == 'full') && '4' || '2' }}
-  TEST_GREP: ${{ (github.event_name == 'schedule' || inputs.coverage == 'full') && '.*' || '@smoke' }}
 
 jobs:
-  validate:
-    name: Validate project
+  e2e:
+    name: Test and build reports
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 180
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 22
-          cache: npm
-      - run: npm ci
-      - run: npm run typecheck
-      - run: npx playwright test --list --reporter=line
 
-  crawl:
-    name: Discover site pages
-    needs: validate
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v6
       - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
-      - run: npm ci
-      - run: npm run crawl
-      - name: Upload crawl data
-        uses: actions/upload-artifact@v7
-        with:
-          name: crawl-cache
-          path: .cache/
-          include-hidden-files: true
-          if-no-files-found: error
-          retention-days: 7
 
-  test:
-    name: Test shard ${{ matrix.shardIndex }}/${{ (github.event_name == 'schedule' || inputs.coverage == 'full') && 4 || 2 }}
-    needs: crawl
-    runs-on: ubuntu-latest
-    timeout-minutes: 90
-    strategy:
-      fail-fast: false
-      matrix:
-        shardIndex: ${{ fromJSON((github.event_name == 'schedule' || inputs.coverage == 'full') && '[1,2,3,4]' || '[1,2]') }}
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 22
-          cache: npm
-      - run: npm ci
+      - name: Install project dependencies
+        run: npm ci
+
+      - name: Validate TypeScript and test discovery
+        run: |
+          npm run typecheck
+          npx playwright test --list --grep "$TEST_GREP" --reporter=line
+
       - name: Cache Playwright browser
         id: playwright-cache
         uses: actions/cache@v5
         with:
           path: ~/.cache/ms-playwright
           key: ${{ runner.os }}-playwright-${{ hashFiles('package-lock.json') }}
+
       - name: Install Chromium and system dependencies
         if: steps.playwright-cache.outputs.cache-hit != 'true'
         run: npx playwright install --with-deps chromium
+
       - name: Install Chromium system dependencies
         if: steps.playwright-cache.outputs.cache-hit == 'true'
         run: npx playwright install-deps chromium
-      - name: Download crawl data
-        uses: actions/download-artifact@v8
-        with:
-          name: crawl-cache
-          path: .cache/
-      - name: Run Playwright tests
-        run: npx playwright test --shard=${{ matrix.shardIndex }}/$SHARD_TOTAL --grep "$TEST_GREP"
-      - name: Upload Playwright blob
-        uses: actions/upload-artifact@v7
-        if: ${{ !cancelled() }}
-        with:
-          name: blob-${{ matrix.shardIndex }}
-          path: blob-report/
-          if-no-files-found: error
-          retention-days: 7
-      - name: Upload Allure results
-        uses: actions/upload-artifact@v7
-        if: ${{ !cancelled() }}
-        with:
-          name: allure-results-${{ matrix.shardIndex }}
-          path: allure-results/
-          if-no-files-found: error
-          retention-days: 7
 
-  report:
-    name: Build reports
-    needs: test
-    if: ${{ !cancelled() }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 22
-          cache: npm
-      - uses: actions/setup-java@v5
+      - name: Discover site pages for full coverage
+        if: env.RUN_FULL == 'true'
+        run: npm run crawl
+
+      # continue-on-error lets both reports build before the final step restores
+      # the correct failed status for the workflow.
+      - name: Run Playwright tests
+        id: tests
+        continue-on-error: true
+        run: npx playwright test --grep "$TEST_GREP"
+
+      - name: Set up Java for Allure
+        if: always() && (steps.tests.outcome == 'success' || steps.tests.outcome == 'failure')
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
-      - run: npm ci
-      - name: Download Playwright blobs
-        uses: actions/download-artifact@v8
-        with:
-          pattern: blob-*
-          path: all-blobs
-          merge-multiple: true
-      - name: Download Allure results
-        uses: actions/download-artifact@v8
-        with:
-          pattern: allure-results-*
-          path: allure-results
-          merge-multiple: true
-      - name: Build Playwright HTML report
-        run: npx playwright merge-reports --reporter html ./all-blobs
+
       - name: Build Allure report
+        if: always() && (steps.tests.outcome == 'success' || steps.tests.outcome == 'failure')
         run: npm run report:allure
-      - name: Upload Playwright report
+
+      - name: Upload Playwright HTML report
+        if: always() && (steps.tests.outcome == 'success' || steps.tests.outcome == 'failure')
         uses: actions/upload-artifact@v7
         with:
           name: playwright-report-${{ github.run_number }}
           path: playwright-report/
           if-no-files-found: error
           retention-days: 30
+
       - name: Upload Allure report
+        if: always() && (steps.tests.outcome == 'success' || steps.tests.outcome == 'failure')
         uses: actions/upload-artifact@v7
         with:
           name: allure-report-${{ github.run_number }}
           path: allure-report/
           if-no-files-found: error
           retention-days: 30
+
+      - name: Preserve the test result
+        if: steps.tests.outcome == 'failure'
+        run: |
+          echo "Tests failed. Reports were generated and uploaded above."
+          exit 1

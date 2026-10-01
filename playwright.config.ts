@@ -22,7 +22,7 @@ const allureReporter: ReporterDescription = [
 ];
 
 const reporters: ReporterDescription[] = process.env.CI
-  ? [['line'], ['blob'], allureReporter]
+  ? [['line'], ['html', { open: 'never', outputFolder: 'playwright-report' }], allureReporter]
   : [
       ['list'],
       ['html', { open: 'never', outputFolder: 'playwright-report' }],
