@@ -4,66 +4,164 @@ on:
   workflow_dispatch:
     inputs:
       base_url:
-        description: 'Site to test'
-        default: 'https://stg-rbi.webc.in'
+        description: Site to test
+        default: https://stg-rbi.webc.in
+        type: string
+      coverage:
+        description: Coverage level
+        default: smoke
+        type: choice
+        options:
+          - smoke
+          - full
   schedule:
     - cron: '30 1 * * *' # nightly 07:00 IST
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: rbi-e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  BASE_URL: ${{ inputs.base_url || 'https://stg-rbi.webc.in' }}
+  HTTP_USER: ${{ secrets.HTTP_USER }}
+  HTTP_PASS: ${{ secrets.HTTP_PASS }}
+  # Pushes use a representative sample. Nightly/manual full runs exercise every
+  # scenario while keeping the expensive per-page audits bounded.
+  MAX_PAGES: ${{ (github.event_name == 'schedule' || inputs.coverage == 'full') && '2000' || '150' }}
+  MAX_PER_SECTION: ${{ (github.event_name == 'schedule' || inputs.coverage == 'full') && '100' || '15' }}
+  PAGE_CHECK_LIMIT: ${{ (github.event_name == 'schedule' || inputs.coverage == 'full') && '0' || '75' }}
+  A11Y_PAGE_LIMIT: ${{ (github.event_name == 'schedule' || inputs.coverage == 'full') && '200' || '20' }}
+  LINK_CHECK_LIMIT: ${{ (github.event_name == 'schedule' || inputs.coverage == 'full') && '0' || '1000' }}
+  INTERACTION_PAGE_LIMIT: ${{ (github.event_name == 'schedule' || inputs.coverage == 'full') && '50' || '5' }}
+  CHECK_EXTERNAL_LINKS: ${{ (github.event_name == 'schedule' || inputs.coverage == 'full') && 'true' || 'false' }}
 
 jobs:
-  crawl:
+  validate:
+    name: Validate project
     runs-on: ubuntu-latest
-    env:
-      BASE_URL: ${{ inputs.base_url || 'https://stg-rbi.webc.in' }}
-      HTTP_USER: ${{ secrets.HTTP_USER }}
-      HTTP_PASS: ${{ secrets.HTTP_PASS }}
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with: { node-version: 22, cache: npm }
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npx playwright test --list --reporter=line
+
+  crawl:
+    name: Discover site pages
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
       - run: npm ci
       - run: npm run crawl
-      - uses: actions/upload-artifact@v4
-        with: { name: crawl-cache, path: .cache/ }
+      - name: Upload crawl data
+        uses: actions/upload-artifact@v4
+        with:
+          name: crawl-cache
+          path: .cache/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 7
 
   test:
+    name: Test shard ${{ matrix.shardIndex }}/${{ matrix.shardTotal }}
     needs: crawl
     runs-on: ubuntu-latest
+    timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix:
-        shard: [1/4, 2/4, 3/4, 4/4]
-    env:
-      BASE_URL: ${{ inputs.base_url || 'https://stg-rbi.webc.in' }}
-      HTTP_USER: ${{ secrets.HTTP_USER }}
-      HTTP_PASS: ${{ secrets.HTTP_PASS }}
+        shardIndex: [1, 2, 3, 4]
+        shardTotal: [4]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with: { node-version: 22, cache: npm }
+        with:
+          node-version: 22
+          cache: npm
       - run: npm ci
       - run: npx playwright install --with-deps chromium
-      - uses: actions/download-artifact@v4
-        with: { name: crawl-cache, path: .cache/ }
-      - run: npx playwright test --shard=${{ matrix.shard }} --reporter=blob
-      - uses: actions/upload-artifact@v4
-        if: always()
+      - name: Download crawl data
+        uses: actions/download-artifact@v4
         with:
-          name: blob-${{ strategy.job-index }}
+          name: crawl-cache
+          path: .cache/
+      - name: Run Playwright tests
+        run: npx playwright test --shard=${{ matrix.shardIndex }}/${{ matrix.shardTotal }}
+      - name: Upload Playwright blob
+        uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: blob-${{ matrix.shardIndex }}
           path: blob-report/
+          if-no-files-found: error
+          retention-days: 7
+      - name: Upload Allure results
+        uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: allure-results-${{ matrix.shardIndex }}
+          path: allure-results/
+          if-no-files-found: error
+          retention-days: 7
 
   report:
+    name: Build reports
     needs: test
-    if: always()
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with: { node-version: 22, cache: npm }
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
       - run: npm ci
-      - uses: actions/download-artifact@v4
-        with: { pattern: blob-*, path: all-blobs, merge-multiple: true }
-      - run: npx playwright merge-reports --reporter html ./all-blobs
-      - uses: actions/upload-artifact@v4
-        with: { name: html-report, path: playwright-report/ }
+      - name: Download Playwright blobs
+        uses: actions/download-artifact@v4
+        with:
+          pattern: blob-*
+          path: all-blobs
+          merge-multiple: true
+      - name: Download Allure results
+        uses: actions/download-artifact@v4
+        with:
+          pattern: allure-results-*
+          path: allure-results
+          merge-multiple: true
+      - name: Build Playwright HTML report
+        run: npx playwright merge-reports --reporter html ./all-blobs
+      - name: Build Allure report
+        run: npm run report:allure
+      - name: Upload Playwright report
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-${{ github.run_number }}
+          path: playwright-report/
+          if-no-files-found: error
+          retention-days: 30
+      - name: Upload Allure report
+        uses: actions/upload-artifact@v4
+        with:
+          name: allure-report-${{ github.run_number }}
+          path: allure-report/
+          if-no-files-found: error
+          retention-days: 30

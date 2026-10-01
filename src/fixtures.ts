@@ -12,7 +12,7 @@ export type PageIssues = {
  * requests for the lifetime of the test's page.
  */
 export const test = base.extend<{ issues: PageIssues }>({
-  issues: async ({ page }, use) => {
+  issues: async ({ page }, use, testInfo) => {
     const issues: PageIssues = { consoleErrors: [], pageErrors: [], failedRequests: [] };
     const origin = new URL(config.baseURL).origin;
 
@@ -40,6 +40,15 @@ export const test = base.extend<{ issues: PageIssues }>({
     });
 
     await use(issues);
+
+    const count = issues.consoleErrors.length + issues.pageErrors.length + issues.failedRequests.length;
+    if (count > 0) {
+      await testInfo.attach('browser-issues.json', {
+        body: JSON.stringify(issues, null, 2),
+        contentType: 'application/json',
+      });
+      testInfo.annotations.push({ type: 'browser-issues', description: `${count} issue(s) captured` });
+    }
   },
 });
 

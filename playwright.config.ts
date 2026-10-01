@@ -1,10 +1,34 @@
-import { defineConfig, devices } from '@playwright/test';
+import { defineConfig, devices, type ReporterDescription } from '@playwright/test';
+import os from 'node:os';
 import { config } from './src/config';
 
 const httpCredentials =
   config.httpUser && config.httpPass ? { username: config.httpUser, password: config.httpPass } : undefined;
 
 const launchOptions = process.env.PW_CHROMIUM_PATH ? { executablePath: process.env.PW_CHROMIUM_PATH } : {};
+
+const allureReporter: ReporterDescription = [
+  'allure-playwright',
+  {
+    resultsDir: 'allure-results',
+    detail: true,
+    suiteTitle: true,
+    environmentInfo: {
+      target_url: config.baseURL,
+      os: `${os.platform()} ${os.release()}`,
+      node: process.version,
+    },
+  },
+];
+
+const reporters: ReporterDescription[] = process.env.CI
+  ? [['line'], ['blob'], allureReporter]
+  : [
+      ['list'],
+      ['html', { open: 'never', outputFolder: 'playwright-report' }],
+      ['json', { outputFile: 'test-results/results.json' }],
+      allureReporter,
+    ];
 
 export default defineConfig({
   testDir: './tests',
@@ -14,11 +38,7 @@ export default defineConfig({
   workers: process.env.CI ? 4 : undefined,
   timeout: 60_000,
   expect: { timeout: 10_000 },
-  reporter: [
-    ['list'],
-    ['html', { open: 'never' }],
-    ['json', { outputFile: 'test-results/results.json' }],
-  ],
+  reporter: reporters,
   use: {
     baseURL: config.baseURL,
     httpCredentials,

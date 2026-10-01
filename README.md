@@ -1,6 +1,6 @@
 # RBI website — E2E test suite
 
-Playwright + TypeScript automation for **https://stg-rbi.webc.in**: a full-site crawl with per-page health checks, link checking, accessibility scans, and functional journeys on desktop and mobile.
+Playwright + TypeScript automation for **https://stg-rbi.webc.in**: a full-site crawl with per-page health checks, link checking, accessibility scans, and functional journeys on desktop and mobile. Every run produces both Playwright HTML and Allure results.
 
 ## Quick start (Windows)
 
@@ -37,10 +37,29 @@ cp .env.example .env      # Windows: Copy-Item .env.example .env
 | `npm run test:locators` | Checks every XPath in `src/locators/xpath.ts` still matches the live site |
 | `npm run test:headed` | Watch it run in a real browser |
 | `npm run report` | Open the HTML report (screenshots, video and trace on failures) |
+| `npm run report:allure` | Generate the Allure dashboard from the latest results |
+| `npm run report:allure:open` | Open the generated Allure dashboard |
+| `npm run report:allure:serve` | Generate and serve Allure in one command |
+| `npm run report:clean` | Remove old Playwright and Allure report output |
 
 Target a different environment: `BASE_URL=https://www.rbi.org.in npm run test:functional`
 
 Filter by tag: `npx playwright test --grep @functional`, `@pages`, `@links`, `@a11y`.
+
+## Reports
+
+- **Allure** is the primary dashboard. It groups results by suite and browser, shows retries/history-ready metadata, and includes Playwright steps plus JSON issue attachments.
+- **Playwright HTML** remains available because its trace viewer is the fastest way to debug a failed browser step.
+- In GitHub Actions, download `allure-report-<run number>` or `playwright-report-<run number>` from the run's **Artifacts** section and open `index.html`.
+- Run `npm run report:clean` before a fresh local execution when you do not want Allure to include results from earlier runs.
+
+Allure report generation requires Java. CI installs Java automatically; for local use install Java 17 or newer.
+
+## GitHub Actions
+
+Pushes and pull requests run a bounded representative sample so feedback remains practical. The nightly schedule and a manual run with **coverage = full** execute all functional scenarios and a much larger page/link/accessibility/interaction audit. Four test shards are merged into one Playwright report and one Allure report even when tests fail.
+
+Site defects still make the test job red by design. Infrastructure errors (for example missing crawl data) fail earlier with an explicit artifact error, so they are not confused with product failures.
 
 ## Test cases
 
