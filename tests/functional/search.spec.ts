@@ -8,7 +8,7 @@ test.describe('Site search', { tag: '@functional' }, () => {
     await gotoAndSettle(page, '/');
   });
 
-  test(`searching "${config.searchTerm}" from the header shows results`, async ({ page, issues }) => {
+  test(`searching "${config.searchTerm}" from the header shows results`, { tag: '@smoke' }, async ({ page, issues }) => {
     await new SiteHeader(page).search(config.searchTerm);
     await expect(page).toHaveURL(/\/search\?.*q=/);
     await expect(xp(page, X.search.title)).toContainText(config.searchTerm);
@@ -27,7 +27,7 @@ test.describe('Site search', { tag: '@functional' }, () => {
     expect(n).toBeGreaterThan(0);
   });
 
-  test('clicking a search result opens a working page', async ({ page }) => {
+  test('clicking a search result opens a working page', { tag: '@smoke' }, async ({ page }) => {
     await gotoAndSettle(page, `/search?q=${encodeURIComponent(config.searchTerm)}`);
     const result = xp(page, X.search.resultLinks).first();
     const href = (await result.getAttribute('href'))!;
@@ -44,14 +44,14 @@ test.describe('Site search', { tag: '@functional' }, () => {
     await expect.poll(() => xp(page, X.search.resultLinks).first().getAttribute('href')).not.toBe(first);
   });
 
-  test('gibberish search shows the empty state', async ({ page, issues }) => {
+  test('gibberish search shows the empty state', { tag: '@smoke' }, async ({ page, issues }) => {
     await new SiteHeader(page).search('zqxwvkjhg123nonexistent');
     await expect(xp(page, X.search.noResults)).toBeVisible();
     await expect(xp(page, X.search.resultLinks)).toHaveCount(0);
     expect(issues.pageErrors).toEqual([]);
   });
 
-  test('special characters are handled safely (no XSS, no 5xx)', async ({ page, issues }) => {
+  test('special characters are handled safely (no XSS, no 5xx)', { tag: '@smoke' }, async ({ page, issues }) => {
     let dialogFired = false;
     page.on('dialog', async (d) => {
       dialogFired = true;

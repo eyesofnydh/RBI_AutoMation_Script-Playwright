@@ -15,7 +15,7 @@ test.describe('Homepage', { tag: '@functional' }, () => {
     await gotoAndSettle(page, '/');
   });
 
-  test('title, hidden h1 and vision statement render', async ({ page }) => {
+  test('title, hidden h1 and vision statement render', { tag: '@smoke' }, async ({ page }) => {
     await expect(page).toHaveTitle(/Reserve Bank of India/i);
     await expect(xp(page, X.home.srOnlyH1)).toHaveText(/Reserve Bank of India/);
     await expect(xp(page, X.home.heroText)).toBeVisible();
@@ -75,7 +75,7 @@ test.describe('Homepage', { tag: '@functional' }, () => {
     }
   });
 
-  test('Current Rates: every tab shows values', async ({ page }) => {
+  test('Current Rates: every tab shows values', { tag: '@smoke' }, async ({ page }) => {
     await expect(xp(page, X.home.ratesHeading)).toHaveText(/Current Rates/);
     await expect(xp(page, X.home.policyRepoRate)).toBeVisible();
     await expect(xp(page, X.home.rateTabs)).toHaveCount(rateTabs.length);
@@ -100,7 +100,7 @@ test.describe('Homepage', { tag: '@functional' }, () => {
     expect(v).toBeLessThan(20);
   });
 
-  test('Latest Updates tabs switch content', async ({ page }) => {
+  test('Latest Updates tabs switch content', { tag: '@smoke' }, async ({ page }) => {
     const whatsNew = xp(page, X.home.whatsNewTab);
     const today = xp(page, X.home.updatedTodayTab);
     await expect(whatsNew).toHaveAttribute('aria-selected', 'true');
@@ -138,7 +138,7 @@ test.describe('Homepage', { tag: '@functional' }, () => {
     await expect(xp(page, X.home.governorHeading)).toBeVisible();
   });
 
-  test('footer is present with links', async ({ page }) => {
+  test('footer is present with links', { tag: '@smoke' }, async ({ page }) => {
     const footer = xp(page, X.footer.root);
     await footer.scrollIntoViewIfNeeded();
     await expect(footer).toBeVisible();

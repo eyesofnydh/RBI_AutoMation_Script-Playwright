@@ -7,7 +7,7 @@ test.describe('Header & navigation', { tag: '@functional' }, () => {
     await gotoAndSettle(page, '/');
   });
 
-  test('logo is visible and links to the homepage', async ({ page }) => {
+  test('logo is visible and links to the homepage', { tag: '@smoke' }, async ({ page }) => {
     const header = new SiteHeader(page);
     await expect(header.logo).toBeVisible();
     await gotoAndSettle(page, '/press-releases');
@@ -15,7 +15,7 @@ test.describe('Header & navigation', { tag: '@functional' }, () => {
     await expect(page).toHaveURL(/\/$/);
   });
 
-  test('Press Releases nav link opens the listing', async ({ page, isMobile }) => {
+  test('Press Releases nav link opens the listing', { tag: '@smoke' }, async ({ page, isMobile }) => {
     test.skip(isMobile, 'top nav collapses into the menu on mobile');
     const header = new SiteHeader(page);
     await header.pressReleases.click();
@@ -59,7 +59,7 @@ test.describe('Header & navigation', { tag: '@functional' }, () => {
     await expect(header.aboutRbi).toHaveAttribute('aria-expanded', 'false');
   });
 
-  test('hamburger menu opens, lists sections and closes', async ({ page }) => {
+  test('hamburger menu opens, lists sections and closes', { tag: '@smoke' }, async ({ page }) => {
     const header = new SiteHeader(page);
     const menu = xp(page, X.navMenu.root);
     await expect(menu).toBeHidden();
@@ -87,7 +87,7 @@ test.describe('Header & navigation', { tag: '@functional' }, () => {
     expect(bad).toEqual([]);
   });
 
-  test('"Skip to main content" moves focus into main', async ({ page }) => {
+  test('"Skip to main content" moves focus into main', { tag: '@smoke' }, async ({ page }) => {
     const header = new SiteHeader(page);
     await header.skipLink.click();
     await expect

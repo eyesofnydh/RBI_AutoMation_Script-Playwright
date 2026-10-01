@@ -46,6 +46,8 @@ Target a different environment: `BASE_URL=https://www.rbi.org.in npm run test:fu
 
 Filter by tag: `npx playwright test --grep @functional`, `@pages`, `@links`, `@a11y`.
 
+Fast critical-path check: `npx playwright test --grep @smoke` (24 desktop/mobile checks).
+
 ## Reports
 
 - **Allure** is the primary dashboard. It groups results by suite and browser, shows retries/history-ready metadata, and includes Playwright steps plus JSON issue attachments.
@@ -57,7 +59,7 @@ Allure report generation requires Java. CI installs Java automatically; for loca
 
 ## GitHub Actions
 
-Pushes and pull requests run a bounded representative sample so feedback remains practical. The nightly schedule and a manual run with **coverage = full** execute all functional scenarios and a much larger page/link/accessibility/interaction audit. Four test shards are merged into one Playwright report and one Allure report even when tests fail.
+Pushes and pull requests run the `@smoke` suite on two shards so feedback remains practical. The nightly schedule and a manual run with **coverage = full** execute all functional scenarios and a much larger page/link/accessibility/interaction audit on four shards. Chromium is cached between runs, and all shards are merged into one Playwright report and one Allure report even when tests fail.
 
 Site defects still make the test job red by design. Infrastructure errors (for example missing crawl data) fail earlier with an explicit artifact error, so they are not confused with product failures.
 
